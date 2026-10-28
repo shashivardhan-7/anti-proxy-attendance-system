@@ -8,7 +8,7 @@ import base64
 from app.config import settings
 
 
-QR_LIFETIME_SECONDS = 30
+QR_LIFETIME_SECONDS = 45
 
 
 def _sign(payload: str) -> str:
