@@ -126,7 +126,7 @@ export default function Home() {
   const sessionStartedAt = useRef<number | null>(null);
   const scanUrl =
     session && token
-      ? `${window.location.origin}/attendance/scan?session=${encodeURIComponent(session.id)}&token=${encodeURIComponent(token)}`
+      ? `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/attendance/scan?session=${encodeURIComponent(session.id)}&token=${encodeURIComponent(token)}`
       : "";
 
   const loadQr = useCallback(async (sessionId: string, silent = false) => {
