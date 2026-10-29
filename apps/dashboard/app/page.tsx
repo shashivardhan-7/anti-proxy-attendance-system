@@ -398,7 +398,7 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2 text-sm text-slate-500">
               <Clock3 className="h-4 w-4" />
-              QR rotation: every 30 seconds
+              QR rotation: every 60 seconds
             </div>
           </div>
         </section>
