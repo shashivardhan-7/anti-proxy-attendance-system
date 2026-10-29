@@ -107,6 +107,26 @@ def verify_attendance(
             "reason": "Session is closed",
         }
 
+    expires_at = datetime.fromisoformat(
+        session["expires_at"].replace("Z", "+00:00")
+    )
+
+    if datetime.now(timezone.utc) >= expires_at:
+        supabase.table("attendance_sessions").update(
+            {"status": "ended"}
+        ).eq("id", session_id).execute()
+
+        _log_event(
+            session_id,
+            student_id,
+            "attendance_rejected",
+            "Attendance session has expired",
+        )
+        return {
+            "verified": False,
+            "reason": "Attendance session has expired",
+        }
+
     # -----------------------------------------------------
     # 3. Check enrollment
     # -----------------------------------------------------

@@ -1,4 +1,5 @@
 "use client";
+import { supabase } from "@/lib/supabase";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
@@ -21,8 +22,9 @@ import {
 const API = "/api/backend";
 const CLASS_ID = "10000000-0000-0000-0000-000000000001";
 const PROFESSOR_ID = "00000000-0000-0000-0000-000000000001";
-const QR_REFRESH_MS = 40_000;
-const QR_LIFETIME_SECONDS = 45;
+const QR_REFRESH_MS = 30_000;
+const QR_LIFETIME_SECONDS = 30;
+const SESSION_DURATION_MS = 2 * 60 * 1000;
 
 type Session = {
   id: string;
@@ -72,7 +74,22 @@ function getToken(data: any): string | undefined {
 }
 
 async function requestJson(url: string, options?: RequestInit) {
-  const response = await fetch(url, options);
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    window.location.href = "/login";
+    throw new Error("Please sign in to continue.");
+  }
+
+  const headers = new Headers(options?.headers);
+  headers.set("Authorization", `Bearer ${session.access_token}`);
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
   const text = await response.text();
 
   let data: any;
@@ -106,10 +123,11 @@ export default function Home() {
   const [now, setNow] = useState(Date.now());
   const refreshInFlight = useRef(false);
   const tokenUpdatedAt = useRef(Date.now());
+  const sessionStartedAt = useRef<number | null>(null);
   const scanUrl =
-  session && token
-    ? `http://${window.location.hostname}:3000/attendance/scan?session=${encodeURIComponent(session.id)}&token=${encodeURIComponent(token)}`
-    : "";
+    session && token
+      ? `${window.location.origin}/attendance/scan?session=${encodeURIComponent(session.id)}&token=${encodeURIComponent(token)}`
+      : "";
 
   const loadQr = useCallback(async (sessionId: string, silent = false) => {
     if (refreshInFlight.current) return;
@@ -156,7 +174,7 @@ export default function Home() {
           class_id: CLASS_ID,
           professor_id: PROFESSOR_ID,
           room: "LH-204",
-          duration_minutes: 10,
+          duration_minutes: 2,
         }),
       });
 
@@ -173,7 +191,7 @@ export default function Home() {
         status: data?.session?.status ?? data?.status ?? "active",
         expires_at: data?.session?.expires_at ?? data?.expires_at,
       };
-
+      sessionStartedAt.current = Date.now();
       setSession(nextSession);
 
       // Use the initial token if the create-session endpoint returned one.
@@ -231,14 +249,29 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!session) return;
+  if (!session?.id || !sessionStartedAt.current) return;
 
-    const interval = window.setInterval(() => {
-      void loadQr(session.id, true);
-    }, QR_REFRESH_MS);
+  const interval = window.setInterval(() => {
+    const elapsed = Date.now() - sessionStartedAt.current!;
 
-    return () => window.clearInterval(interval);
-  }, [session, loadQr]);
+    if (elapsed >= SESSION_DURATION_MS) {
+      window.clearInterval(interval);
+      setSession(null);
+      setToken("");
+      setSecondsLeft(0);
+      sessionStartedAt.current = null;
+      setNotice({
+        kind: "success",
+        message: "Attendance session ended after 2 minutes.",
+      });
+      return;
+    }
+
+    void loadQr(session.id, true);
+  }, QR_REFRESH_MS);
+
+  return () => window.clearInterval(interval);
+}, [session, loadQr]);
 
   useEffect(() => {
     if (!session?.id) {
@@ -336,6 +369,16 @@ export default function Home() {
               API {serverOnline ? "Connected" : "Offline"}
             </span>
           </div>
+          <button
+            type="button"
+            onClick={async () => {
+              await supabase.auth.signOut();
+              window.location.href = "/login";
+            }}
+            className="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
+          >
+            Logout
+          </button>
         </header>
 
         <section className="py-9">
@@ -355,7 +398,7 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2 text-sm text-slate-500">
               <Clock3 className="h-4 w-4" />
-              QR rotation: every 20 seconds
+              QR rotation: every 30 seconds
             </div>
           </div>
         </section>
@@ -419,7 +462,7 @@ export default function Home() {
                 ) : (
                   <div className="flex flex-col items-center justify-center">
                     <div className="rounded-2xl bg-white p-4 shadow-[0_0_40px_rgba(34,211,238,0.08)]">
-                      <QRCodeSVG value={scanUrl || token} size={220} level="H" includeMargin />
+                      <QRCodeSVG value={scanUrl} size={220} level="H" includeMargin />
                     </div>
                     <div className="mt-5 flex items-center gap-2 text-sm text-cyan-200">
                       <RefreshCw
@@ -450,7 +493,7 @@ export default function Home() {
                   <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
                     Session duration
                   </p>
-                  <p className="mt-2 text-2xl font-semibold">10 min</p>
+                  <p className="mt-2 text-2xl font-semibold">2 min</p>
                   <p className="mt-1 text-xs text-slate-500">Configured for demo</p>
                 </div>
                 <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">

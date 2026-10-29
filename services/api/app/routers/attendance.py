@@ -1,21 +1,87 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.services.supabase import supabase
-
 from app.schemas.attendance import (
     AttendanceRequest,
     StartSessionRequest,
+    DeviceEnrollRequest,
+    DeviceChallengeRequest,
 )
-from app.services.attendance import (
-    create_session,
-    verify_attendance,
-)
+from app.services.attendance import create_session, verify_attendance
 from app.services.qr import create_qr_token
+from app.services.device_binding import (
+    register_device,
+    create_device_challenge,
+    verify_device_signature,
+)
+from app.core.auth import require_roles
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
 
+def _resolve_student_id(value: str) -> str:
+    value = value.strip()
+    result = (
+        supabase.table("profiles")
+        .select("id")
+        .eq("student_id", value)
+        .limit(1)
+        .execute()
+    )
+    if result.data:
+        return result.data[0]["id"]
+
+    result = (
+        supabase.table("profiles")
+        .select("id")
+        .eq("id", value)
+        .limit(1)
+        .execute()
+    )
+    if result.data:
+        return result.data[0]["id"]
+
+    raise ValueError("Student not found")
+
+
+@router.post("/devices/register")
+def enroll_device(
+    request: DeviceEnrollRequest,
+    identity: dict = Depends(require_roles("admin", "student")),
+):
+    try:
+        return register_device(
+            request.student_id,
+            request.enrollment_code,
+            request.public_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Device registration failed") from exc
+
+
+@router.post("/devices/challenge")
+def issue_device_challenge(
+    request: DeviceChallengeRequest,
+    identity: dict = Depends(require_roles("student")),
+):
+    try:
+        return create_device_challenge(
+            request.student_id,
+            request.session_id,
+            request.qr_token,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Could not create device challenge") from exc
+
+
 @router.post("/sessions")
-def start_session(request: StartSessionRequest):
+def start_session(
+    request: StartSessionRequest,
+    identity: dict = Depends(require_roles("admin", "professor")),
+):
     try:
         session = create_session(
             request.class_id,
@@ -23,47 +89,52 @@ def start_session(request: StartSessionRequest):
             request.room,
             request.duration_minutes,
         )
-
         qr = create_qr_token(session["id"])
-
-        return {
-            "session": session,
-            "qr": qr,
-        }
-
+        return {"session": session, "qr": qr}
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/sessions/{session_id}/qr")
-def get_qr(session_id: str):
+def get_qr(
+    session_id: str,
+    identity: dict = Depends(require_roles("admin", "professor")),
+):
     try:
         return create_qr_token(session_id)
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/verify")
-def verify(request: AttendanceRequest):
+def verify(
+    request: AttendanceRequest,
+    identity: dict = Depends(require_roles("student")),
+):
     try:
-        # Accept either a human-readable student ID (e.g. STU001)
-        # or an internal profile UUID.
-        student_id = request.student_id.strip()
-        profile_result = (
-            supabase.table("profiles")
-            .select("id")
-            .eq("student_id", student_id)
-            .limit(1)
-            .execute()
+        profile = identity["profile"]
+        supplied_id = request.student_id.strip()
+
+        if supplied_id not in {
+            str(profile.get("id", "")),
+            str(profile.get("student_id", "")),
+        }:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only submit attendance for your own account",
+            )
+
+        student_id = str(profile["id"])
+
+        # This is the server-side device check. The browser cannot set it
+        # directly; a valid signature from the registered public key is required.
+        verify_device_signature(
+            student_id=student_id,
+            session_id=request.session_id,
+            qr_token=request.qr_token,
+            challenge_id=request.device_challenge_id,
+            signature_b64=request.device_signature,
         )
-        if profile_result.data:
-            student_id = profile_result.data[0]["id"]
 
         return verify_attendance(
             student_id,
@@ -71,17 +142,24 @@ def verify(request: AttendanceRequest):
             request.qr_token,
             request.ble_verified,
             request.biometric_verified,
-            request.device_verified,
+            True,
         )
-
+    except ValueError as exc:
+        return {
+            "verified": False,
+            "reason": str(exc),
+        }
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail="Attendance verification failed",
         ) from exc
 
 @router.get("/sessions/{session_id}/records")
-def get_session_records(session_id: str):
+def get_session_records(
+    session_id: str,
+    identity: dict = Depends(require_roles("admin", "professor")),
+):
     try:
         result = (
             supabase.table("attendance_records")
@@ -114,7 +192,10 @@ def get_session_records(session_id: str):
 
 
 @router.get("/sessions/{session_id}/events")
-def get_session_events(session_id: str):
+def get_session_events(
+    session_id: str,
+    identity: dict = Depends(require_roles("admin", "professor")),
+):
     try:
         result = (
             supabase.table("security_events")
