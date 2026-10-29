@@ -155,7 +155,7 @@ def verify(
         )
         raise HTTPException(
             status_code=500,
-            detail="Attendance verification failed",
+            detail=f"DEBUG: {type(exc).__name__}: {exc}",
         ) from exc
 
 @router.get("/sessions/{session_id}/records")
