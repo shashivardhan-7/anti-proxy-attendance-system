@@ -42,7 +42,14 @@ export default function LoginPage() {
         return;
       }
 
-      router.replace("/");
+      const next = new URLSearchParams(window.location.search).get("next");
+
+      const safeNext =
+        next && next.startsWith("/") && !next.startsWith("//")
+          ? next
+          : "/";
+
+      router.replace(safeNext);
       router.refresh();
     } catch {
       setMessage("Unable to sign in. Check your connection and try again.");

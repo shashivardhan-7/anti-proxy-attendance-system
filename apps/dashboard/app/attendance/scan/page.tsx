@@ -9,11 +9,18 @@ async function authenticatedFetch(
   url: string,
   options: RequestInit = {},
 ): Promise<Response> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
   if (!session) {
-    window.location.href = "/login";
-    throw new Error("Please sign in before scanning attendance.");
+    const returnTo =
+      window.location.pathname + window.location.search;
+
+    window.location.href =
+      `/login?next=${encodeURIComponent(returnTo)}`;
+
+    throw new Error("Please sign in before continuing attendance.");
   }
 
   const headers = new Headers(options.headers);
