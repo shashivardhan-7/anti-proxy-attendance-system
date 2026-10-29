@@ -51,7 +51,6 @@ def enroll_device(
     try:
         return register_device(
             request.student_id,
-            request.enrollment_code,
             request.public_key,
         )
     except ValueError as exc:

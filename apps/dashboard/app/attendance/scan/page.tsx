@@ -129,7 +129,6 @@ function ScanForm() {
   const qrToken = params.get("token") ?? "";
 
   const [studentId, setStudentId] = useState("");
-  const [enrollmentCode, setEnrollmentCode] = useState("");
   const [ble, setBle] = useState(false);
   const [biometric, setBiometric] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -139,10 +138,10 @@ function ScanForm() {
   } | null>(null);
 
   async function registerDevice() {
-    if (!studentId.trim() || !enrollmentCode.trim()) {
+    if (!studentId.trim()) {
       setResult({
         ok: false,
-        message: "Enter your student ID and one-time enrollment code.",
+        message: "Enter your student ID.",
       });
       return;
     }
@@ -165,7 +164,6 @@ function ScanForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           student_id: studentId.trim(),
-          enrollment_code: enrollmentCode.trim(),
           public_key: toBase64(publicKey),
         }),
       });
@@ -176,7 +174,6 @@ function ScanForm() {
         throw new Error(data.detail || "Device registration failed.");
       }
 
-      setEnrollmentCode("");
       setResult({
         ok: true,
         message:
@@ -316,39 +313,6 @@ function ScanForm() {
             required
             className="w-full rounded-xl border border-white/15 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-400"
           />
-        </div>
-
-        <div className="mt-4 rounded-xl border border-cyan-400/20 p-4">
-          <h2 className="font-semibold">Register this browser</h2>
-          <p className="mt-1 text-xs leading-5 text-slate-300">
-            Use the one-time code issued to you. Registration is normally
-            needed only once per browser profile.
-          </p>
-
-          <label
-            htmlFor="enrollmentCode"
-            className="mb-2 mt-4 block text-sm text-slate-200"
-          >
-            One-time enrollment code
-          </label>
-          <input
-            id="enrollmentCode"
-            type="password"
-            autoComplete="off"
-            value={enrollmentCode}
-            onChange={(event) => setEnrollmentCode(event.target.value)}
-            placeholder="Enter your code"
-            className="w-full rounded-xl border border-white/15 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-400"
-          />
-
-          <button
-            type="button"
-            onClick={registerDevice}
-            disabled={busy}
-            className="mt-3 w-full rounded-xl border border-cyan-400 px-4 py-3 font-semibold text-cyan-200 transition hover:bg-cyan-400/10 disabled:opacity-50"
-          >
-            {busy ? "Please wait…" : "Register browser"}
-          </button>
         </div>
 
         <form onSubmit={submit} className="mt-5 space-y-5">

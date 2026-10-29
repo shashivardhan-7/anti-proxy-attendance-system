@@ -11,7 +11,6 @@ class StartSessionRequest(BaseModel):
 
 class DeviceEnrollRequest(BaseModel):
     student_id: str
-    enrollment_code: str
     public_key: str
 
 

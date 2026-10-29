@@ -43,33 +43,10 @@ def resolve_student_id(value: str) -> str:
     return result.data[0]["id"]
 
 
-def register_device(student_id: str, enrollment_code: str, public_key_b64: str):
+def register_device(student_id: str, public_key_b64: str):
     student_id = resolve_student_id(student_id)
 
-    code_hash = _sha256(enrollment_code.strip())
-
-    code_result = (
-        supabase.table("device_enrollment_codes")
-        .select("*")
-        .eq("student_id", student_id)
-        .eq("code_hash", code_hash)
-        .is_("used_at", "null")
-        .limit(1)
-        .execute()
-    )
-
-    if not code_result.data:
-        raise ValueError("Invalid or already used enrollment code")
-
-    code_row = code_result.data[0]
-
     from datetime import datetime, timezone
-
-    expires_at = datetime.fromisoformat(
-        code_row["expires_at"].replace("Z", "+00:00")
-    )
-    if datetime.now(timezone.utc) >= expires_at:
-        raise ValueError("Enrollment code has expired")
 
     try:
         public_key_bytes = base64.b64decode(public_key_b64, validate=True)
@@ -143,13 +120,6 @@ def register_device(student_id: str, enrollment_code: str, public_key_b64: str):
             .execute()
         )
 
-    (
-        supabase.table("device_enrollment_codes")
-        .update({"used_at": datetime.now(timezone.utc).isoformat()})
-        .eq("id", code_row["id"])
-        .is_("used_at", "null")
-        .execute()
-    )
 
     return {"registered": True, "message": "Device registered successfully"}
 
