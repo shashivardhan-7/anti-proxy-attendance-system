@@ -149,6 +149,10 @@ def verify(
             "reason": str(exc),
         }
     except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception(
+            "Attendance verification crashed"
+        )
         raise HTTPException(
             status_code=500,
             detail="Attendance verification failed",
