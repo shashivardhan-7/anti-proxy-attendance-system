@@ -4,6 +4,7 @@
 import { FormEvent, Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
 
 async function authenticatedFetch(
   url: string,
@@ -174,10 +175,38 @@ function ScanForm() {
         throw new Error(data.detail || "Device registration failed.");
       }
 
+      const optionsResponse = await authenticatedFetch(
+        `${API}/attendance/devices/webauthn/register/options`,
+        { method: "POST" },
+      );
+      const optionsData = await optionsResponse.json();
+      if (!optionsResponse.ok) {
+        throw new Error(optionsData.detail || "Could not start passkey registration.");
+      }
+
+      const credential = await startRegistration({
+        optionsJSON: JSON.parse(optionsData.options),
+      });
+
+      const verifyResponse = await authenticatedFetch(
+        `${API}/attendance/devices/webauthn/register/verify`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            challenge_id: optionsData.challenge_id,
+            credential,
+          }),
+        },
+      );
+      const verifyData = await verifyResponse.json();
+      if (!verifyResponse.ok) {
+        throw new Error(verifyData.detail || "Passkey registration failed.");
+      }
+
       setResult({
         ok: true,
-        message:
-          "This browser is now registered. Keep this browser profile for future attendance.",
+        message: "Device and passkey registered successfully. You can now mark attendance.",
       });
     } catch (error) {
       setResult({
@@ -206,6 +235,35 @@ function ScanForm() {
 
       if (!pair) {
         throw new Error("Register this browser before marking attendance.");
+      }
+
+      const authOptionsResponse = await authenticatedFetch(
+        `${API}/attendance/devices/webauthn/authenticate/options`,
+        { method: "POST" },
+      );
+      const authOptionsData = await authOptionsResponse.json();
+      if (!authOptionsResponse.ok) {
+        throw new Error(authOptionsData.detail || "Could not start device authentication.");
+      }
+
+      const webauthnCredential = await startAuthentication({
+        optionsJSON: JSON.parse(authOptionsData.options),
+      });
+
+      const authVerifyResponse = await authenticatedFetch(
+        `${API}/attendance/devices/webauthn/authenticate/verify`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            challenge_id: authOptionsData.challenge_id,
+            credential: webauthnCredential,
+          }),
+        },
+      );
+      const authVerifyData = await authVerifyResponse.json();
+      if (!authVerifyResponse.ok || authVerifyData.user_verified !== true) {
+        throw new Error(authVerifyData.detail || "Device authentication was not verified.");
       }
 
       const challengeResponse = await authenticatedFetch(
@@ -243,7 +301,7 @@ function ScanForm() {
           session_id: sessionId,
           qr_token: qrToken,
           ble_verified: ble,
-          biometric_verified: biometric,
+          biometric_verified: true,
           device_challenge_id: challengeData.challenge_id,
           device_signature: toBase64(signature),
         }),
@@ -315,6 +373,15 @@ function ScanForm() {
           />
         </div>
 
+        <button
+          type="button"
+          onClick={registerDevice}
+          disabled={busy || !studentId.trim()}
+          className="mt-5 w-full rounded-xl border border-cyan-400 px-4 py-3 font-semibold text-cyan-300 disabled:opacity-50"
+        >
+          {busy ? "Please wait…" : "Register this device"}
+        </button>
+
         <form onSubmit={submit} className="mt-5 space-y-5">
           <fieldset className="space-y-3 rounded-xl border border-amber-400/30 bg-amber-400/5 p-4">
             <legend className="px-1 text-sm font-semibold text-amber-200">
@@ -334,14 +401,9 @@ function ScanForm() {
               Simulate BLE proximity passed
             </label>
 
-            <label className="flex items-center gap-3 text-sm">
-              <input
-                type="checkbox"
-                checked={biometric}
-                onChange={(event) => setBiometric(event.target.checked)}
-              />
-              Simulate biometric check passed
-            </label>
+            <p className="text-sm text-slate-200">
+              Device authentication is performed with your fingerprint, face unlock, or device PIN.
+            </p>
           </fieldset>
 
           <button

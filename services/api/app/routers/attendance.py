@@ -228,3 +228,75 @@ def get_session_events(
         return {"session_id": session_id, "count": len(events), "events": events}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Could not load security events: {exc}") from exc
+
+
+# WebAuthn demo endpoints
+from app.services import webauthn_demo
+
+
+@router.post("/devices/webauthn/register/options")
+def webauthn_register_options(identity: dict = Depends(require_roles("student"))):
+    profile = identity["profile"]
+    try:
+        return webauthn_demo.registration_options(
+            str(profile["id"]), identity["email"]
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("WebAuthn registration options failed")
+        raise HTTPException(status_code=500, detail="Could not start device registration") from exc
+
+
+@router.post("/devices/webauthn/register/verify")
+def webauthn_register_verify(
+    payload: dict,
+    identity: dict = Depends(require_roles("student")),
+):
+    profile = identity["profile"]
+    try:
+        return webauthn_demo.finish_registration(
+            str(profile["id"]), payload["challenge_id"], payload["credential"]
+        )
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("WebAuthn registration verification failed")
+        raise HTTPException(status_code=500, detail="Device registration verification failed") from exc
+
+
+@router.post("/devices/webauthn/authenticate/options")
+def webauthn_authenticate_options(
+    identity: dict = Depends(require_roles("student")),
+):
+    try:
+        return webauthn_demo.authentication_options(
+            str(identity["profile"]["id"])
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("WebAuthn authentication options failed")
+        raise HTTPException(status_code=500, detail="Could not start device verification") from exc
+
+
+@router.post("/devices/webauthn/authenticate/verify")
+def webauthn_authenticate_verify(
+    payload: dict,
+    identity: dict = Depends(require_roles("student")),
+):
+    try:
+        return webauthn_demo.finish_authentication(
+            str(identity["profile"]["id"]),
+            payload["challenge_id"],
+            payload["credential"],
+        )
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("WebAuthn authentication verification failed")
+        raise HTTPException(status_code=500, detail="Device authentication failed") from exc
