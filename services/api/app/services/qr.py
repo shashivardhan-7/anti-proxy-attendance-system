@@ -8,7 +8,7 @@ import base64
 from app.config import settings
 
 
-QR_LIFETIME_SECONDS = 60
+QR_LIFETIME_SECONDS = 30
 
 
 def _sign(payload: str) -> str:
@@ -61,7 +61,7 @@ def validate_qr_token(token: str) -> dict:
             ).decode()
         )
 
-        if int(time.time()) > payload["timestamp"] + QR_LIFETIME_SECONDS:
+        if int(time.time()) >= payload["timestamp"] + QR_LIFETIME_SECONDS:
             raise ValueError("QR token expired")
 
         return payload
