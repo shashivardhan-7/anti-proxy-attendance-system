@@ -23,7 +23,7 @@ const API = "/api/backend";
 const CLASS_ID = "10000000-0000-0000-0000-000000000001";
 const PROFESSOR_ID = "00000000-0000-0000-0000-000000000001";
 const QR_REFRESH_MS = 30_000;
-const QR_LIFETIME_SECONDS = 60;
+const QR_LIFETIME_SECONDS = 30;
 const SESSION_DURATION_MS = 2 * 60 * 1000;
 
 type Session = {
@@ -398,7 +398,7 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2 text-sm text-slate-500">
               <Clock3 className="h-4 w-4" />
-              QR rotation: every 60 seconds
+              QR rotation: every 30 seconds
             </div>
           </div>
         </section>
